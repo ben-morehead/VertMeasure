@@ -189,12 +189,15 @@ class Window(QWidget):
         demo_page = QWidget()
         demo_layout = QVBoxLayout()
         button_layout = QHBoxLayout()
+        self.vertical_label = QLabel(f"Current Height: {0}")
         self.exit_button = QPushButton("Exit Application", clicked=self.close)
         self.demo_reset_button = QPushButton("Calculate New Jump", clicked=self.reset_demo_page)
         self.demo_label = QLabel()
         self.demo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        
         button_layout.addWidget(self.demo_reset_button)
         button_layout.addWidget(self.exit_button)
+        button_layout.addWidget(self.vertical_label)
         demo_layout.addWidget(self.demo_label)
         demo_layout.addLayout(button_layout)
         demo_page.setLayout(demo_layout)
@@ -203,11 +206,12 @@ class Window(QWidget):
         return demo_page
 
     def update_demo_display(self):
-        frame = np.copy(self.ch.get_demo_frame())
+        vert, frame = np.copy(self.ch.get_demo_frame())
         frame_img = Image.fromarray(frame)
         self.__demo_qImg = ImageQt(frame_img)
         self.kin_pixmap = QPixmap.fromImage(self.__demo_qImg)
         self.demo_label.setPixmap(self.kin_pixmap)
+        self.vertical_label.setText(f"Current Height: {vert}")
         self.demo_label.update()
 
     def entrance_page_generator(self):

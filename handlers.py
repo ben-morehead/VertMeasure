@@ -88,9 +88,9 @@ class PoseHandler():
 class CalibrationHandler():
     def __init__(self):
         print("Calibration Handler Created")
-        #self.source_name = "Down_And_Up_2.mp4"
+        self.source_name = "Down_And_Up_2.mp4"
         #self.source_name = "No_Strength_Shortening_1.mp4"
-        self.source_name = "ben_2.mov"
+        #self.source_name = "ben_2.mov"
         self.base_frame = None
         self.stage_tolerance = 4 #CONFIGURATION VALUE
         #self.height_measured = 77.5 #CONFIGURATION VALUE
@@ -112,9 +112,9 @@ class CalibrationHandler():
             self.demo_vidcap.release()
             self.demo_vidcap = cv.VideoCapture(f"vid_src\\{self.source_name}")
             ret, frame = self.demo_vidcap.read()
-        frame = self.draw_demo_frame(frame=frame)
+        vert, frame = self.draw_demo_frame(frame=frame)
         ret_frame = self.convert_to_formatted_frame(frame=frame)
-        return ret_frame
+        return vert, ret_frame
 
     def close_demo(self):
         self.demo_vidcap.release()
@@ -237,16 +237,29 @@ class CalibrationHandler():
 
     def draw_demo_frame(self, frame):
         frame_cpy = np.copy(frame)
-        vert_jump = 12
+        vert = 12
         #NEED:
         # - Text showing the current jump height
         # - Base lines for the ankles and the shoulders (HAL/HAR/HA)
         # - Line for the current shoulders
         # - Vertical Line Connecting the two shoulder lines
-        frame_cpy = cv.putText(frame_cpy, f"Current Jump Height: {vert_jump}", (0, 0), 3, 4, (255, 255, 255, 255), 2)
-        frame_cpy = cv.line(frame_cpy, (0, int((self.hal + self.har) / 2)), (1919, int((self.hal + self.har) / 2)), color=(255, 0, 0), thickness=1)
-        frame_cpy = cv.line(frame_cpy, (0, int(((self.hal - self.hsl) + (self.har - self.hsr)) / 2)), (1919, int(((self.hal - self.hsl) + (self.har - self.hsr)) / 2)), color=(255, 0, 0), thickness=1)
-        return frame_cpy
+        self.pose_handler.findPose(frame_cpy, draw = False)
+        values = self.pose_handler.findPosition(frame_cpy, ["left_shoulder", "right_shoulder"], draw=False)
+        print(values)
+        lsy = values[0][2]
+        lsx = values[0][1]
+        rsy = values[1][2]
+        rsx = values[1][1]
+        sy = int((rsy + lsy) / 2)
+        sx = int((rsx + lsx) / 2)
+        by = int(((self.hal - self.hsl) + (self.har - self.hsr)) / 2)
+        vert = (by - sy) / self.pixels_per_inch
+
+        frame_cpy = cv.line(frame_cpy, (0, int((self.hal + self.har) / 2)), (1919, int((self.hal + self.har) / 2)), color=(255, 0, 0), thickness=2)
+        frame_cpy = cv.line(frame_cpy, (lsx,lsy), (rsx,rsy), color=(0, 0, 255), thickness=2)
+        frame_cpy = cv.line(frame_cpy, (sx, by), (sx, sy), color=(0, 0, 255), thickness=2)
+        frame_cpy = cv.line(frame_cpy, (0, by), (1919, by), color=(255, 0, 0), thickness=2)
+        return vert, frame_cpy
 
 
     def convert_to_formatted_frame(self, frame):
