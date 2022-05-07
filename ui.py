@@ -36,6 +36,10 @@ class Window(QWidget):
         self.measured_jump_height = -1
         self.cal_tl, self.cat_br = (0, 11), (1897, 1068)
 
+        #Timers
+        self.frame_rate_demo = 15
+        self.demo_timer = None
+
         #General Application Setup
         self.reset_program = 0
         self.app_start_time = time.time()
@@ -50,12 +54,12 @@ class Window(QWidget):
         self.entrance = self.entrance_page_generator()
         self.cal_scale = self.calibration_page_generator()
         self.export_p = self.export_page_generator()
+        self.demo = self.demo_page_generator()
 
-        #self.demo = self.demo_page_generator()
         self.stackedLayout.addWidget(self.entrance)
         self.stackedLayout.addWidget(self.cal_scale)
         self.stackedLayout.addWidget(self.export_p)
-        #self.stackedLayout.addWidget(self.demo)
+        self.stackedLayout.addWidget(self.demo)
         self.general_layout.addLayout(self.stackedLayout)
         print(f"Stacked Layout Count: {self.stackedLayout.count()}")
 
@@ -84,17 +88,6 @@ class Window(QWidget):
             self.log.info("Exiting Program Via: Escape Key")
             self.close()
     
-    def draw_reset_cal(self, img):
-        cv2.rectangle(img,(100,930),(860,1030),(0, 0, 255, 255),-1)
-        cv2.putText(img, "RESET", (241,1020), 3, 4, (255, 255, 255, 255), 2)
-        #cv2.circle(img, (0, 11), 8, (255, 0, 0, 255), -1)
-        #cv2.circle(img, (1898, 1068), 8, (255, 0, 0, 255), -1)
-        #cv2.rectangle(img,(0, 11),(1897, 1068),(255, 0, 0, 255),-1)
-
-    def draw_continue_cal(self, img):
-        cv2.rectangle(img,(1060,930),(1820,1030),(0, 0, 255, 255),-1)
-        cv2.putText(img, "CONTINUE", (1100,1020), 3, 4, (255, 255, 255, 255), 2)
-    
     def next_page(self):
         if self.reset_program:
             self.reset_program = 0
@@ -109,7 +102,6 @@ class Window(QWidget):
         self.reset_program = 1
         self.next_page()
 
-    
     def export_jump_info(self):
         print("TO IMPLEMENT: Export the Jumping Statistics")
     
@@ -120,7 +112,7 @@ class Window(QWidget):
 
         self.calibration_label = QLabel(self)
         #self.calibration_label = QLabel(str(self.shoulder_offset))
-        #self.calibration_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.calibration_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.add_shoulder_offset_btn = QPushButton("Increase", clicked=self.increase_shoulder_offset)
         self.sub_shoulder_offset_btn = QPushButton("Decrease", clicked=self.decrease_shoulder_offset)
         self.confirm_shoulder_offset_btn = QPushButton("Confirm", clicked=self.confirm_shoulder_offset)
@@ -173,7 +165,7 @@ class Window(QWidget):
 
         self.export_label = QLabel(text=f"Vertical Jump: {self.measured_jump_height:.2f} inches")
         self.export_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.demo_btn = QPushButton("See Demo", clicked=self.next_page)
+        self.demo_btn = QPushButton("See Demo", clicked=self.setup_demo_page)
         self.export_btn = QPushButton("Export Information", clicked=self.reset_page)
 
         button_layout.addWidget(self.demo_btn)
@@ -184,26 +176,39 @@ class Window(QWidget):
         export_page.setLayout(export_layout)
     
         return export_page
+    
+    def setup_demo_page(self):
+        self.ch.setup_demo()
+        self.demo_timer.start(1000/self.frame_rate_demo)
+        self.next_page()
 
-    def update_cal_display(self):
-        frame = self.ip.get_frame()
-        
-        if type(frame) is not int:
-            if self.mouse_state == 0:
-                self.mouse_state = 1
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2RGBA)
-            for val in self.calibrate_asset_list:
-                cv2.circle(frame, val, 8, (255, 0, 0, 255), -1)
-            if self.mouse_state == 2:
-                self.draw_reset_cal(frame)
-                self.draw_continue_cal(frame)
-            frame_img = Image.fromarray(frame)
-            qImg = ImageQt(frame_img)
-            self.kin_pixmap = QPixmap.fromImage(qImg)
-        else:
-            pass
-            
-        self.calibrate_page.setPixmap(self.kin_pixmap)
+    def reset_demo_page(self):
+        self.reset_page()
+
+    def demo_page_generator(self):
+        demo_page = QWidget()
+        demo_layout = QVBoxLayout()
+        button_layout = QHBoxLayout()
+        self.exit_button = QPushButton("Exit Application", clicked=self.close)
+        self.demo_reset_button = QPushButton("Calculate New Jump", clicked=self.reset_demo_page)
+        self.demo_label = QLabel()
+        self.demo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        button_layout.addWidget(self.demo_reset_button)
+        button_layout.addWidget(self.exit_button)
+        demo_layout.addWidget(self.demo_label)
+        demo_layout.addLayout(button_layout)
+        demo_page.setLayout(demo_layout)
+        self.demo_timer = QTimer(self)
+        self.demo_timer.timeout.connect(self.update_demo_display)
+        return demo_page
+
+    def update_demo_display(self):
+        frame = np.copy(self.ch.get_demo_frame())
+        frame_img = Image.fromarray(frame)
+        self.__demo_qImg = ImageQt(frame_img)
+        self.kin_pixmap = QPixmap.fromImage(self.__demo_qImg)
+        self.demo_label.setPixmap(self.kin_pixmap)
+        self.demo_label.update()
 
     def entrance_page_generator(self):
         entrance_page = QWidget()

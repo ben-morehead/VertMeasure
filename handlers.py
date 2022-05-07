@@ -90,7 +90,7 @@ class CalibrationHandler():
         print("Calibration Handler Created")
         #self.source_name = "Down_And_Up_2.mp4"
         #self.source_name = "No_Strength_Shortening_1.mp4"
-        self.source_name = "ben_1.mov"
+        self.source_name = "ben_2.mov"
         self.base_frame = None
         self.stage_tolerance = 4 #CONFIGURATION VALUE
         #self.height_measured = 77.5 #CONFIGURATION VALUE
@@ -103,7 +103,22 @@ class CalibrationHandler():
         self.stage_split = 0
         self.pixels_per_inch = 5
 
-    
+    def setup_demo(self):
+        self.demo_vidcap = cv.VideoCapture(f"vid_src\\{self.source_name}")
+
+    def get_demo_frame(self):
+        ret, frame = self.demo_vidcap.read()
+        if frame is None:
+            self.demo_vidcap.release()
+            self.demo_vidcap = cv.VideoCapture(f"vid_src\\{self.source_name}")
+            ret, frame = self.demo_vidcap.read()
+        frame = self.draw_demo_frame(frame=frame)
+        ret_frame = self.convert_to_formatted_frame(frame=frame)
+        return ret_frame
+
+    def close_demo(self):
+        self.demo_vidcap.release()
+
     def define_stages(self):
         split_found = 0
         count = 0
@@ -219,7 +234,21 @@ class CalibrationHandler():
         self.pixels_per_inch = int(height_pixels / self.height_measured)
         print(f"Pixels Per Inch: {self.pixels_per_inch}")
         self.head_point = new_head_point
-    
+
+    def draw_demo_frame(self, frame):
+        frame_cpy = np.copy(frame)
+        vert_jump = 12
+        #NEED:
+        # - Text showing the current jump height
+        # - Base lines for the ankles and the shoulders (HAL/HAR/HA)
+        # - Line for the current shoulders
+        # - Vertical Line Connecting the two shoulder lines
+        frame_cpy = cv.putText(frame_cpy, f"Current Jump Height: {vert_jump}", (0, 0), 3, 4, (255, 255, 255, 255), 2)
+        frame_cpy = cv.line(frame_cpy, (0, int((self.hal + self.har) / 2)), (1919, int((self.hal + self.har) / 2)), color=(255, 0, 0), thickness=1)
+        frame_cpy = cv.line(frame_cpy, (0, int(((self.hal - self.hsl) + (self.har - self.hsr)) / 2)), (1919, int(((self.hal - self.hsl) + (self.har - self.hsr)) / 2)), color=(255, 0, 0), thickness=1)
+        return frame_cpy
+
+
     def convert_to_formatted_frame(self, frame):
         #Going to take the data frame from opencv and converts it into numpy array
         #Size: (1080,1920,3)
