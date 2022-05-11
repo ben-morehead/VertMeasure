@@ -3,6 +3,12 @@ import cv2 as cv
 import time
 import numpy as np
 import mapping
+import logging
+import matplotlib.pyplot as plt
+from datetime import datetime
+import csv
+
+
 
 class PoseHandler():
     def __init__(self,
@@ -86,31 +92,40 @@ class PoseHandler():
         return values
 
 class CalibrationHandler():
-    def __init__(self):
+    def __init__(self, source_name="ben_2.mov", jumper_name="Ben", jumper_height=72, jump_style=4, log=logging.getLogger(__name__)):
         print("Calibration Handler Created")
-        self.source_name = "Down_And_Up_2.mp4"
+        self.source_name = source_name
+        self.log = log
         #self.source_name = "No_Strength_Shortening_1.mp4"
         #self.source_name = "ben_2.mov"
-        self.base_frame = None
-        self.stage_tolerance = 4 #CONFIGURATION VALUE
-        #self.height_measured = 77.5 #CONFIGURATION VALUE
-        self.height_measured = 72.75
-        self.num_max_vals = 1 #CONFIGURATION VALUE
-        self.shoulder_head_ratio_estimate = 1.25 #INIT - CHANGES
+        self.jumper_name= jumper_name
+        self.jump_style = jump_style
 
+        self.base_frame = None
+        
+        #self.height_measured = 77.5 #CONFIGURATION VALUE
+        self.height_measured = jumper_height
+        self.stage_tolerance = 3 #HYPERPARAMETER
+        self.num_max_vals = 1 #HYPERPARAMETER
+        self.shoulder_head_ratio_estimate = 1.25 #HYPERPARAMETER
+        self.base_fps = 30
+
+        self.shoulder_levels = []
+
+        self.inch_vert = 0
         self.head_point = 500
         self.pose_handler = PoseHandler()
         self.stage_split = 0
         self.pixels_per_inch = 5
 
     def setup_demo(self):
-        self.demo_vidcap = cv.VideoCapture(f"vid_src\\{self.source_name}")
+        self.demo_vidcap = cv.VideoCapture(f"{self.source_name}")
 
     def get_demo_frame(self):
         ret, frame = self.demo_vidcap.read()
         if frame is None:
             self.demo_vidcap.release()
-            self.demo_vidcap = cv.VideoCapture(f"vid_src\\{self.source_name}")
+            self.demo_vidcap = cv.VideoCapture(f"{self.source_name}")
             ret, frame = self.demo_vidcap.read()
         vert, frame = self.draw_demo_frame(frame=frame)
         ret_frame = self.convert_to_formatted_frame(frame=frame)
@@ -118,12 +133,93 @@ class CalibrationHandler():
 
     def close_demo(self):
         self.demo_vidcap.release()
+        self.demo_vidcap = None
 
-    def define_stages(self):
+    def export_jump_info(self):
+        header = ["Name", "Maximum Vertical Jump (inches)", "Descent Speed (inches/s)", "Descent Level (inches)", "Ground Time (s)"]
+        if self.jump_style == 4:
+            time_id = datetime.now().strftime("%Y%m%d%H%M")
+            name_base = f"{self.jumper_name}_{time_id}_two_foot"
+            
+            graph_x_vals = np.linspace(0,len(self.shoulder_levels),num=len(self.shoulder_levels),endpoint=False)
+            graph_y_vals = np.array(self.shoulder_levels)
+            graph_base_vals = np.array([int(((self.hal - self.hsl) + (self.har - self.hsr)) / 2)] * len(self.shoulder_levels))
+
+            plt.xlabel('Time (Frames)')
+            plt.ylabel('Height (Inches)')
+            plt.plot(graph_x_vals, (graph_base_vals - graph_y_vals) / self.pixels_per_inch, 'o', color='red')
+            plt.plot(graph_x_vals, graph_base_vals - graph_base_vals, '-', color='blue')
+            plt.legend(["Shoulder Path", "Initial Shoulder Level"])
+            plt.show()
+            plt.savefig(f'info_exports\\{name_base}_graph.png')
+
+            desc_level, desc_speed, ground_time = self.measure_descent_speed()
+
+            data_row = [f"{self.jumper_name}", f"{self.inch_vert}", f"{desc_speed}", f"{desc_level}", f"{ground_time}"]
+
+            with open(f'info_exports\\{name_base}_info.csv', 'w+', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(header)
+                writer.writerow(data_row)
+
+        else:
+            print("Jump Style not Implemented Yet")
+
+    def measure_descent_speed(self):
+        measure_descent = False
+        measure_ground_time = False
+        init_frame = 0
+        descent_frame = 0
+        init_level = 0
+        lowest_point = 0
+        final_ground_frame = 0
+
+        for i, val in enumerate(self.shoulder_levels):
+            if i == 0:
+                prev_val = val
+            else:
+                prev_val = current_val
+            current_val = val
+
+            if measure_descent:
+                if current_val < prev_val:
+                    lowest_point = prev_val
+                    descent_frame = (i - 1)
+                    measure_descent = False
+                    measure_ground_time = True
+            else:
+                if measure_ground_time:
+                    if current_val > init_level:
+                        final_ground_frame = i - 1
+                        break
+                else:
+                    if current_val - prev_val > self.stage_tolerance:
+                        init_level = prev_val
+                        init_frame = (i - 1)
+                        measure_descent = True
+
+            
+        print("ADVANCED DATA INFO")
+        print(f"Init Frame = {init_frame}")
+        print(f"Init Level = {init_level}")
+        print(f"Descent Frame = {descent_frame}")
+        print(f"Descent Level = {lowest_point}\n")
+        print(f"Final Ground Frame = {final_ground_frame}")
+
+        descent_level = (lowest_point - init_level) / self.pixels_per_inch
+        descent_speed = descent_level / ((descent_frame - init_frame) / self.base_fps)
+        ground_time = (final_ground_frame - init_frame) / self.base_fps
+        print(f"Lowest Reached (inches): {descent_level:.2f}")
+        print(f"Descent Speed (inches/second): {descent_speed:.2f}")
+        print(f"Ground Time: {ground_time:.2f} seconds")
+        return descent_level, descent_speed, ground_time
+        
+
+    def define_stages(self, one_leg=False):
         split_found = 0
         count = 0
         #Code for displaying a video for 60fps
-        cap = cv.VideoCapture(f"vid_src\\{self.source_name}")
+        cap = cv.VideoCapture(f"{self.source_name}")
         while True:
             ret, frame = cap.read()
             if count == 5:
@@ -157,16 +253,19 @@ class CalibrationHandler():
         print(f"Splitting Point: Frame {self.stage_split}")
 
     def calculate_vertical_jump(self):
-        self.get_stage_1_vals()
-        print(self.hsr, self.jsr)
+        if self.jump_style == 4:
+            self.get_two_foot_vals()
+        else:
+            print("JUMPING STYLE NOT YET IMPLEMENTED")
         pixel_vertical = int(((self.jsl-self.hsl) + (self.jsr-self.hsr))/2)
         inch_vertical = pixel_vertical / self.pixels_per_inch
         print(f"Vertical in Pixels: {pixel_vertical} | Vertical in Inches: {inch_vertical}")
+        self.inch_vert = inch_vertical
         return inch_vertical
 
     def get_stage_0_vals(self):
         frame_count = 0
-        cap = cv.VideoCapture(f"vid_src\\{self.source_name}")
+        cap = cv.VideoCapture(f"{self.source_name}")
         left_shoulder_list = []
         right_shoulder_list = []
         left_ankle_list = []
@@ -189,9 +288,10 @@ class CalibrationHandler():
         self.hsl = self.hal - (sum(left_shoulder_list) / len(left_shoulder_list))
         self.hsr = self.har - (sum(right_shoulder_list) / len(right_shoulder_list))
 
-    def get_stage_1_vals(self):
+    def get_two_foot_vals(self):
+        self.shoulder_levels = []
         frame_count = 0
-        cap = cv.VideoCapture(f"vid_src\\{self.source_name}")
+        cap = cv.VideoCapture(f"{self.source_name}")
         left_shoulder_list = []
         right_shoulder_list = []
         left_ankle_list = []
@@ -200,9 +300,9 @@ class CalibrationHandler():
             ret, frame = cap.read()
             if frame is None:
                 break
-            if frame_count < self.stage_split:
-                frame_count += 1
-                continue
+            #if frame_count < self.stage_split:
+                #frame_count += 1
+                #continue
             pose_frame = np.copy(frame)
             self.pose_handler.findPose(pose_frame, draw = False)
             values = self.pose_handler.findPosition(pose_frame, ["left_shoulder", "right_shoulder", "left_heel", "left_foot_index", "right_heel", "right_foot_index"], draw=False)
@@ -219,6 +319,7 @@ class CalibrationHandler():
             left_shoulder_height = left_shoulder_list[i]
             right_shoulder_height = right_shoulder_list[i]
             avg_height = (left_shoulder_height + right_shoulder_height) / 2
+            self.shoulder_levels.append(avg_height)
             if avg_height < max_shoulder_height:
                 self.jsl = self.hal - left_shoulder_height
                 self.jsr = self.har - right_shoulder_height
@@ -231,7 +332,7 @@ class CalibrationHandler():
     def calibrate_head_height(self, offset):
         new_head_point = self.head_point + offset
         height_pixels = int((self.hal + self.har) / 2) - new_head_point
-        self.pixels_per_inch = int(height_pixels / self.height_measured)
+        self.pixels_per_inch = height_pixels / self.height_measured
         print(f"Pixels Per Inch: {self.pixels_per_inch}")
         self.head_point = new_head_point
 
@@ -245,7 +346,7 @@ class CalibrationHandler():
         # - Vertical Line Connecting the two shoulder lines
         self.pose_handler.findPose(frame_cpy, draw = False)
         values = self.pose_handler.findPosition(frame_cpy, ["left_shoulder", "right_shoulder"], draw=False)
-        print(values)
+
         lsy = values[0][2]
         lsx = values[0][1]
         rsy = values[1][2]
@@ -284,7 +385,7 @@ class CalibrationHandler():
         return ret_frame
 
     def play_selected_video():
-        cap = cv.VideoCapture(f"vid_src\\{self.source_name}")
+        cap = cv.VideoCapture(f"{self.source_name}")
         while True:
             ret, frame = cap.read()
             cv.imshow("Sample Window", frame)

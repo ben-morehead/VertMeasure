@@ -1,9 +1,10 @@
+from distutils.command.upload import upload
 import os
 import sys
 import time
 import logging
 from PyQt5.QtWidgets import (QApplication, QComboBox, QFileDialog, QLineEdit, QPushButton,
-                             QStackedLayout, QVBoxLayout, QHBoxLayout, QWidget, QTextEdit,
+                             QStackedLayout, QRadioButton, QVBoxLayout, QHBoxLayout, QWidget, QTextEdit,
                              QLabel)
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
@@ -20,13 +21,8 @@ class Window(QWidget):
     def __init__(self, screen_width, screen_height):
         super().__init__()
         self.setup_logger()
-        self.ch = CalibrationHandler()
+        self.ch = None
         self.__calibration_qImg = None
-
-        #Calibration Handler Setup
-        self.ch.define_stages()
-        self.ch.get_stage_0_vals()
-        self.ch.estimate_head_height()
 
         #DEV STUFF
         self.toggle = True
@@ -52,18 +48,20 @@ class Window(QWidget):
         self.setLayout(self.general_layout)
         self.stackedLayout = QStackedLayout()
         self.entrance = self.entrance_page_generator()
-        self.cal_scale = self.calibration_page_generator()
-        self.export_p = self.export_page_generator()
-        self.demo = self.demo_page_generator()
-
+        self.config_p = self.config_page_generator()
+        self.cal_scale = None
+        self.export_p = None
+        self.demo = None
+        
         self.stackedLayout.addWidget(self.entrance)
-        self.stackedLayout.addWidget(self.cal_scale)
-        self.stackedLayout.addWidget(self.export_p)
-        self.stackedLayout.addWidget(self.demo)
+        self.stackedLayout.addWidget(self.config_p)
+        
         self.general_layout.addLayout(self.stackedLayout)
         print(f"Stacked Layout Count: {self.stackedLayout.count()}")
 
         self.showFullScreen()
+
+    '''----- Program Infrastructure ----- '''
 
     def setup_logger(self):
         self.log = logging.getLogger('VertMeasure')
@@ -91,8 +89,11 @@ class Window(QWidget):
     def next_page(self):
         if self.reset_program:
             self.reset_program = 0
-            self.stackedLayout.setCurrentIndex(0)
-            self.export_jump_info()
+            self.stackedLayout.removeWidget(self.cal_scale)
+            self.stackedLayout.removeWidget(self.export_p)
+            self.stackedLayout.removeWidget(self.demo)
+            self.ch = None
+            self.stackedLayout.setCurrentIndex(1)
             return
 
         self.stackedLayout.setCurrentIndex(self.stackedLayout.currentIndex() + 1)
@@ -102,9 +103,122 @@ class Window(QWidget):
         self.reset_program = 1
         self.next_page()
 
+    '''----- Output Formatting -----'''
+
     def export_jump_info(self):
-        print("TO IMPLEMENT: Export the Jumping Statistics")
+        output_path = ".\\info_exports"
+        self.ch.export_jump_info()
+        
     
+    '''----- UI Definitions ------'''
+
+    def entrance_page_generator(self):
+        entrance_page = QWidget()
+        
+        entrance_layout = QVBoxLayout()
+        self.entrance_label = QLabel("Vertical Jump Measurement")
+        self.entrance_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.begin_button = QPushButton("BEGIN", clicked=self.next_page)
+        entrance_layout.addWidget(self.entrance_label)
+        entrance_layout.addWidget(self.begin_button)
+        entrance_page.setLayout(entrance_layout)
+
+        return entrance_page
+
+    def config_page_generator(self):
+            config_page = QWidget()
+            config_layout = QVBoxLayout()
+            button_layout = QHBoxLayout()
+            
+            ###Entry Definitions
+
+            # Video Source: Widget declaration --------------------------------------------
+            upload_entry = QHBoxLayout()
+            upload_label = QLabel("Video Path:")
+            self.upload_line = QLineEdit()
+            upload_button = QPushButton("Upload", clicked=self.get_video_file)
+            # Widget Specifications
+            self.upload_line.setMinimumWidth(self.windowWidth * 0.6)
+            self.upload_line.setReadOnly(1)
+            upload_button.setMinimumWidth(self.windowWidth * 0.2)
+            # Layout
+            upload_entry.addWidget(upload_label)
+            upload_entry.addStretch(1)
+            upload_entry.addWidget(self.upload_line)
+            upload_entry.addStretch(1)
+            upload_entry.addWidget(upload_button)
+
+            # Name: Widget declaration ----------------------------------------------------
+            name_entry = QHBoxLayout()
+            name_label = QLabel("Name:")
+            self.name_line = QLineEdit()
+            # Widget Specifications
+            self.name_line.setMinimumWidth(self.windowWidth * 0.9)
+            # Layout
+            name_entry.addWidget(name_label)
+            name_entry.addStretch(1)
+            name_entry.addWidget(self.name_line)
+
+            # Height: Widget declaration --------------------------------------------------
+            height_entry = QHBoxLayout()
+            height_label = QLabel("Height (inches):")
+            self.height_line = QLineEdit()
+            # Widget Specifications
+            self.height_line.setMinimumWidth(self.windowWidth * 0.8)
+            # Layout
+            height_entry.addWidget(height_label)
+            height_entry.addStretch(1)
+            height_entry.addWidget(self.height_line)
+
+            # Jump Style: Widget declaration -------------------------------------------------
+            style_entry = QHBoxLayout()
+            style_label = QLabel("Jump Approach:")
+            self.style_left = QRadioButton("Left")
+            self.style_right = QRadioButton("Right")
+            self.style_left_right = QRadioButton("Left-Right")
+            self.style_right_left = QRadioButton("Right-Left")
+            self.style_two_foot = QRadioButton("Stationary Two Foot")
+            self.style_two_foot.setChecked(1)
+            # Widget Specifications
+            self.style_left.setMinimumWidth(self.windowWidth * 0.1)
+            self.style_right.setMinimumWidth(self.windowWidth * 0.1)
+            self.style_left_right.setMinimumWidth(self.windowWidth * 0.1)
+            self.style_right_left.setMinimumWidth(self.windowWidth * 0.1)
+            self.style_two_foot.setMinimumWidth(self.windowWidth * 0.1)
+            # Layout
+            style_entry.addWidget(style_label)
+            style_entry.addStretch(1)
+            style_entry.addWidget(self.style_left)
+            style_entry.addWidget(self.style_right)
+            style_entry.addWidget(self.style_left_right)
+            style_entry.addWidget(self.style_right_left)
+            style_entry.addWidget(self.style_two_foot)
+            style_entry.addStretch(5)
+            
+
+
+
+            #Button Definitions
+            self.config_set_msg = QLabel("")
+            self.config_set_button = QPushButton("Confirm", clicked=self.confirm_config)
+            self.config_set_button.setFixedWidth(self.windowWidth / 5)
+            
+            button_layout.addWidget(self.config_set_msg)
+            button_layout.addWidget(self.config_set_button, alignment=Qt.AlignmentFlag.AlignRight)
+            config_layout.addStretch(2)
+            config_layout.addLayout(upload_entry)
+            config_layout.addStretch(1)
+            config_layout.addLayout(name_entry)
+            config_layout.addStretch(1)
+            config_layout.addLayout(height_entry)
+            config_layout.addStretch(1)
+            config_layout.addLayout(style_entry)
+            config_layout.addStretch(12)
+            config_layout.addLayout(button_layout)
+            config_page.setLayout(config_layout)
+
+            return config_page
+
     def calibration_page_generator(self):
         calibration_page = QWidget()
         calibration_layout = QVBoxLayout()
@@ -135,29 +249,6 @@ class Window(QWidget):
 
         return calibration_page
     
-    def increase_shoulder_offset(self):
-        self.shoulder_offset -= 1
-        self.update_calibration_img()
-        #self.calibration_label.setText(str(self.shoulder_offset))
-
-    def decrease_shoulder_offset(self):
-        self.shoulder_offset += 1
-        self.update_calibration_img()
-
-    def confirm_shoulder_offset(self):
-        self.ch.calibrate_head_height(self.shoulder_offset)
-        self.measured_jump_height = self.ch.calculate_vertical_jump()
-        self.export_label.setText(f"Vertical Jump: {self.measured_jump_height:.2f} inches")
-        self.next_page()
-    
-    def update_calibration_img(self):
-        init_frame = self.ch.get_adjusted_head_frame(self.shoulder_offset)
-        frame_img = Image.fromarray(init_frame)
-        self.__calibration_qImg = ImageQt(frame_img)
-        self.kin_pixmap = QPixmap.fromImage(self.__calibration_qImg)
-        self.calibration_label.setPixmap(self.kin_pixmap)
-        self.calibration_label.update()
-
     def export_page_generator(self):
         export_page = QWidget()
         export_layout = QVBoxLayout()
@@ -166,7 +257,7 @@ class Window(QWidget):
         self.export_label = QLabel(text=f"Vertical Jump: {self.measured_jump_height:.2f} inches")
         self.export_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.demo_btn = QPushButton("See Demo", clicked=self.setup_demo_page)
-        self.export_btn = QPushButton("Export Information", clicked=self.reset_page)
+        self.export_btn = QPushButton("Export Information", clicked=self.export_jump_info)
 
         button_layout.addWidget(self.demo_btn)
         button_layout.addWidget(self.export_btn)
@@ -176,14 +267,6 @@ class Window(QWidget):
         export_page.setLayout(export_layout)
     
         return export_page
-    
-    def setup_demo_page(self):
-        self.ch.setup_demo()
-        self.demo_timer.start(1000/self.frame_rate_demo)
-        self.next_page()
-
-    def reset_demo_page(self):
-        self.reset_page()
 
     def demo_page_generator(self):
         demo_page = QWidget()
@@ -205,6 +288,82 @@ class Window(QWidget):
         self.demo_timer.timeout.connect(self.update_demo_display)
         return demo_page
 
+    '''----- Config Page Helpers ----- '''
+
+    def confirm_config(self):
+        valid_set = True
+        upload_name = self.upload_line.text()
+        jumper_name = self.name_line.text()
+        jumper_height = self.height_line.text()
+        jump_style = -1 + (1 * self.style_left.isChecked()) + (2 * self.style_right.isChecked()) + (3 * self.style_left_right.isChecked()) + (4 * self.style_right_left.isChecked()) + (5 * self.style_two_foot.isChecked())
+
+        if upload_name == "" or jumper_name == "" or jumper_height=="":
+            self.log.info("TEXT FIELDS NOT ENTERED")
+            valid_set = False
+
+        if valid_set:
+            jumper_height = float(jumper_height)
+            self.log.info(f"Upload Path: {upload_name}")
+            self.log.info(f"Jumper Name: {jumper_name}")
+            self.log.info(f"Jumper Height: {jumper_height}")
+            self.log.info(f"Jump Style Index: {jump_style}")
+            
+            #Calibration Handler Setup
+            self.ch = CalibrationHandler(source_name=upload_name, jumper_name=jumper_name, jumper_height=jumper_height, jump_style=jump_style, log=self.log)
+            self.ch.define_stages()
+            self.ch.get_stage_0_vals()
+            self.ch.estimate_head_height()
+
+            self.cal_scale = self.calibration_page_generator()
+            self.export_p = self.export_page_generator()
+            self.demo = self.demo_page_generator()
+
+            self.stackedLayout.addWidget(self.cal_scale)
+            self.stackedLayout.addWidget(self.export_p)
+            self.stackedLayout.addWidget(self.demo)
+            
+            self.next_page()
+
+        else:
+            self.config_set_msg.setText("Error: Ensure all configuration settings are complete")
+
+    def get_video_file(self):
+        fname = QFileDialog.getOpenFileName(self, 'Open file', 
+            '.\\vid_src',"Video Files (*.mov *.mp4 *.avi)")
+        self.upload_line.clear()
+        self.upload_line.insert(fname[0])
+
+    '''----- Calibration Page Helpers ----- '''
+
+    def increase_shoulder_offset(self):
+        self.shoulder_offset -= 1
+        self.update_calibration_img()
+
+    def decrease_shoulder_offset(self):
+        self.shoulder_offset += 1
+        self.update_calibration_img()
+
+    def confirm_shoulder_offset(self):
+        self.ch.calibrate_head_height(self.shoulder_offset)
+        self.measured_jump_height = self.ch.calculate_vertical_jump()
+        self.export_label.setText(f"Vertical Jump: {self.measured_jump_height:.2f} inches")
+        self.next_page()
+    
+    def update_calibration_img(self):
+        init_frame = self.ch.get_adjusted_head_frame(self.shoulder_offset)
+        frame_img = Image.fromarray(init_frame)
+        self.__calibration_qImg = ImageQt(frame_img)
+        self.kin_pixmap = QPixmap.fromImage(self.__calibration_qImg)
+        self.calibration_label.setPixmap(self.kin_pixmap)
+        self.calibration_label.update()
+
+    '''----- Demo Page Helpers ----- '''
+    
+    def setup_demo_page(self):
+        self.ch.setup_demo()
+        self.demo_timer.start(1000/self.frame_rate_demo)
+        self.next_page()
+    
     def update_demo_display(self):
         vert, frame = np.copy(self.ch.get_demo_frame())
         frame_img = Image.fromarray(frame)
@@ -214,18 +373,12 @@ class Window(QWidget):
         self.vertical_label.setText(f"Current Height: {vert}")
         self.demo_label.update()
 
-    def entrance_page_generator(self):
-        entrance_page = QWidget()
-        
-        entrance_layout = QVBoxLayout()
-        self.entrance_label = QLabel("Vertical Jump Measurement")
-        self.entrance_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.begin_button = QPushButton("BEGIN", clicked=self.next_page)
-        entrance_layout.addWidget(self.entrance_label)
-        entrance_layout.addWidget(self.begin_button)
-        entrance_page.setLayout(entrance_layout)
+    def reset_demo_page(self):
+        self.demo_timer.stop()
+        self.demo_time = None
+        self.reset_page()
 
-        return entrance_page
+    '''----- DEPRECATED BUT USEFUL ----- '''
 
     def console_maker(self):
         logOutput = QTextEdit()
