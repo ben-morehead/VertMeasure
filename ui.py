@@ -108,6 +108,8 @@ class Window(QWidget):
     def export_jump_info(self):
         output_path = ".\\info_exports"
         self.ch.export_jump_info()
+        self.export_button_label.setText("Information succesfully exported to the output folder")
+        self.export_button_label.update()
         
     
     '''----- UI Definitions ------'''
@@ -252,17 +254,30 @@ class Window(QWidget):
     def export_page_generator(self):
         export_page = QWidget()
         export_layout = QVBoxLayout()
-        button_layout = QHBoxLayout()
+        button_layout = QVBoxLayout()
+        button_layout_row_a = QHBoxLayout()
+        button_layout_row_b = QHBoxLayout()
 
         self.export_label = QLabel(text=f"Vertical Jump: {self.measured_jump_height:.2f} inches")
         self.export_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.demo_btn = QPushButton("See Demo", clicked=self.setup_demo_page)
         self.export_btn = QPushButton("Export Information", clicked=self.export_jump_info)
+        self.export_exit_button = QPushButton("Exit Application", clicked=self.close)
+        self.export_reset_button = QPushButton("Calculate New Jump", clicked=self.reset_page)
+        self.export_button_label = QLabel("")
+        self.export_button_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        button_layout.addWidget(self.demo_btn)
-        button_layout.addWidget(self.export_btn)
+        button_layout_row_a.addWidget(self.demo_btn)
+        button_layout_row_a.addWidget(self.export_btn)
+        button_layout_row_b.addWidget(self.export_reset_button)
+        button_layout_row_b.addWidget(self.export_exit_button)
+        button_layout.addWidget(self.export_button_label)
+        button_layout.addLayout(button_layout_row_a)
+        button_layout.addLayout(button_layout_row_b)
 
+        export_layout.addStretch(1)
         export_layout.addWidget(self.export_label)
+        export_layout.addStretch(1)
         export_layout.addLayout(button_layout)
         export_page.setLayout(export_layout)
     
