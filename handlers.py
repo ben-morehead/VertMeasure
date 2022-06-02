@@ -1,3 +1,4 @@
+from tracemalloc import start
 import mediapipe as mp
 import cv2 as cv
 import time
@@ -92,15 +93,22 @@ class PoseHandler():
         return values
 
 class CalibrationHandler():
-    def __init__(self, source_name="ben_2.mov", jumper_name="Ben", jumper_height=72, jump_style=4, log=logging.getLogger(__name__)):
-        print("Calibration Handler Created")
+    def __init__(self, source_name="vid_src\\ben_2.mov", jumper_name="Ben", jumper_height=72, jump_style=4, log=logging.getLogger(__name__)):
+        '''
+        Initializing the handler object
+        '''
+
+        
         self.source_name = source_name
         self.log = log
+        self.base_frame_tolerance = 1
         #self.source_name = "No_Strength_Shortening_1.mp4"
         #self.source_name = "ben_2.mov"
         self.jumper_name= jumper_name
         self.jump_style = jump_style
 
+        self.log.info("Calibration Handler Created")
+        
         self.base_frame = None
         
         #self.height_measured = 77.5 #CONFIGURATION VALUE
@@ -117,27 +125,109 @@ class CalibrationHandler():
         self.pose_handler = PoseHandler()
         self.stage_split = 0
         self.pixels_per_inch = 5
+        
 
+        #NOTE: These should happen whenever the video changes i.e. the system resets
+        #self.generate_video_points()
+        #self.define_joint_averages()
+
+    def convert_joint_index_to_label(self, index):
+        '''
+        Converts the joint index for mediapipe into its corresponding label
+        '''
+        return list(mapping.landmarks.keys())[list(mapping.landmarks.values()).index(index)]
+
+    def convert_joint_label_to_index(self, label):
+        '''
+        Converts the joint label for mediapipe into its corresponding index value
+        '''
+        return mapping.landmarks[label]
+
+    def generate_video_points(self):
+        '''
+        Generates a dictionary (self.video_joint_dict) that contains all the needed data from mediapipe of the jump video
+        '''
+        self.video_joint_dict = {}
+        cap = cv.VideoCapture(f"{self.source_name}")
+
+        count = 0
+        while True:
+            ret, frame = cap.read()
+            if frame is not None:
+                joint_set = [11, 12, 23, 24, 29, 30, 31, 32]
+                pose_frame = np.copy(frame)
+                self.pose_handler.findPose(pose_frame, draw = False)
+                all_values = self.pose_handler.findPosition(pose_frame, ["left_shoulder", "right_shoulder", "left_hip", "right_hip", "left_heel", "right_heel", "left_foot_index", "right_foot_index"], draw=False)
+                temp_joint_set = []
+                for value in all_values:
+                    if count==0:
+                        self.video_joint_dict[self.convert_joint_index_to_label(value[0])] = []
+                    self.video_joint_dict[self.convert_joint_index_to_label(value[0])].append((count, value[1], value[2]))
+                    temp_joint_set.append(value[0])
+                difference_joint_set = set(joint_set).symmetric_difference(set(temp_joint_set))
+                for value in difference_joint_set:
+                    if count==0:
+                        self.video_joint_dict[self.convert_joint_index_to_label(value)] = []
+                    self.video_joint_dict[self.convert_joint_index_to_label(value)].append((count, -1, -1))
+            else:
+                break
+            count+=1
+        
+        self.frame_count = count
+        cap.release()
+        cv.destroyAllWindows()
+        self.log.info(f"generate_video_points(self) | Dictionary of Joints Created with Keys: {list(self.video_joint_dict.keys())}")
+
+    
     def setup_demo(self):
+        '''
+        Initializing the opencv video capture device for the demonstration section
+        '''
         self.demo_vidcap = cv.VideoCapture(f"{self.source_name}")
+        self.demo_frame_count = 0
 
     def get_demo_frame(self):
+        '''
+        Prepares and provides the frame for the demonstration section of the UI
+        '''
         ret, frame = self.demo_vidcap.read()
         if frame is None:
+            self.demo_frame_count = 0
             self.demo_vidcap.release()
             self.demo_vidcap = cv.VideoCapture(f"{self.source_name}")
             ret, frame = self.demo_vidcap.read()
-        vert, frame = self.draw_demo_frame(frame=frame)
+        vert, frame = self.draw_demo_frame(frame=frame, frame_num=self.demo_frame_count)
         ret_frame = self.convert_to_formatted_frame(frame=frame)
+        self.demo_frame_count += 1
         return vert, ret_frame
 
+    def get_raw_base_frame(self):
+        count = 0
+        cap = cv.VideoCapture(f"{self.source_name}")
+        while True:
+            ret, frame = cap.read()
+            if count == 5:
+                self.base_frame = frame
+                break
+            if frame is None:
+                break
+            count+=1
+        cap.release()
+
     def close_demo(self):
+        '''
+        Closes the demonstration video capture device
+        '''
         self.demo_vidcap.release()
         self.demo_vidcap = None
+        self.demo_frame_count = 0
 
     def export_jump_info(self):
+        '''
+        Exports the statistics from the jump to a graph and csv output file
+        '''
         header = ["Name", "Maximum Vertical Jump (inches)", "Descent Speed (inches/s)", "Descent Level (inches)", "Ground Time (s)"]
-        if self.jump_style == 4:
+        if self.jump_style == 0:
             time_id = datetime.now().strftime("%Y%m%d%H%M")
             name_base = f"{self.jumper_name}_{time_id}_two_foot"
             
@@ -166,6 +256,9 @@ class CalibrationHandler():
             print("Jump Style not Implemented Yet")
 
     def measure_descent_speed(self):
+        '''
+        Measures the speed of the shoulder drop on the downwards action of the jump
+        '''
         measure_descent = False
         measure_ground_time = False
         init_frame = 0
@@ -199,26 +292,51 @@ class CalibrationHandler():
                         measure_descent = True
 
             
-        print("ADVANCED DATA INFO")
-        print(f"Init Frame = {init_frame}")
-        print(f"Init Level = {init_level}")
-        print(f"Descent Frame = {descent_frame}")
-        print(f"Descent Level = {lowest_point}\n")
-        print(f"Final Ground Frame = {final_ground_frame}")
+        self.log.info("measure_descent_speed(self) |ADVANCED DATA INFO")
+        self.log.info("measure_descent_speed(self) |Init Frame = {init_frame}")
+        self.log.info("measure_descent_speed(self) |Init Level = {init_level}")
+        self.log.info("measure_descent_speed(self) |Descent Frame = {descent_frame}")
+        self.log.info("measure_descent_speed(self) |Descent Level = {lowest_point}\n")
+        self.log.info("measure_descent_speed(self) |Final Ground Frame = {final_ground_frame}")
 
         descent_level = (lowest_point - init_level) / self.pixels_per_inch
         descent_speed = descent_level / ((descent_frame - init_frame) / self.base_fps)
         ground_time = (final_ground_frame - init_frame) / self.base_fps
-        print(f"Lowest Reached (inches): {descent_level:.2f}")
-        print(f"Descent Speed (inches/second): {descent_speed:.2f}")
-        print(f"Ground Time: {ground_time:.2f} seconds")
+        self.log.info("measure_descent_speed(self) |Lowest Reached (inches): {descent_level:.2f}")
+        self.log.info("measure_descent_speed(self) |Descent Speed (inches/second): {descent_speed:.2f}")
+        self.log.info("measure_descent_speed(self) |Ground Time: {ground_time:.2f} seconds")
         return descent_level, descent_speed, ground_time
         
-
-    def define_stages(self, one_leg=False):
+    def define_stages(self):
+      
         split_found = 0
         count = 0
         #Code for displaying a video for 60fps
+        #VIA VIDEO DICT
+
+        self.get_raw_base_frame()
+
+        for frame_number in range(0,self.frame_count):
+            # Should be form (x,y)
+            if frame_number == 0:
+                current_shoulder_height = self.shoulder_averages[frame_number][1]
+                prev_shoulder_height = current_shoulder_height
+                
+            else:
+                prev_shoulder_height = current_shoulder_height
+                current_shoulder_height = self.shoulder_averages[frame_number][1]
+            
+            frame_diff = abs(current_shoulder_height - prev_shoulder_height)
+            
+            if frame_diff > self.stage_tolerance and (not split_found):
+                self.stage_split = frame_number
+                split_found = 1
+        self.log.info(f"define_stages(self) | Total Frame Count: {count}")
+        self.log.info(f"define_stages(self) | Splitting Point: Frame {self.stage_split}")
+
+
+        #VIA VIDEO CAP
+        '''
         cap = cv.VideoCapture(f"{self.source_name}")
         while True:
             ret, frame = cap.read()
@@ -251,25 +369,98 @@ class CalibrationHandler():
         cv.destroyAllWindows()
         print(f"Total Frame Count: {count}")
         print(f"Splitting Point: Frame {self.stage_split}")
+        '''
 
+    def define_joint_averages(self):
+        self.ankle_averages = []
+        self.hip_averages = []
+        self.shoulder_averages = []
+
+        for frame_num in range(0, self.frame_count):
+            ankle_check, hip_check, shoulder_check = self.check_for_joints(frame_num)
+            #print(f"Frame Count: {frame_num}/{self.frame_count}")
+            #print(f"Ankle Check, Hip Check, Shoulder Check = {ankle_check}, {hip_check}, {shoulder_check}")
+            if ankle_check:
+                left_foot_avg = ((self.video_joint_dict["left_heel"][frame_num][1] + self.video_joint_dict["left_foot_index"][frame_num][1])/2, (self.video_joint_dict["left_heel"][frame_num][2] + self.video_joint_dict["left_foot_index"][frame_num][2])/2)
+                right_foot_avg = ((self.video_joint_dict["right_heel"][frame_num][1] + self.video_joint_dict["right_foot_index"][frame_num][1])/2, (self.video_joint_dict["right_heel"][frame_num][2] + self.video_joint_dict["right_foot_index"][frame_num][2])/2)
+                self.ankle_averages.append((left_foot_avg, right_foot_avg))
+            else:
+                if frame_num == 0:
+                    self.ankle_averages.append(0)
+                else:
+                    self.ankle_averages.append(self.ankle_averages[-1])
+
+            if hip_check:
+                hip_avg = ((self.video_joint_dict["left_hip"][frame_num][1] + self.video_joint_dict["right_hip"][frame_num][1])/2,(self.video_joint_dict["left_hip"][frame_num][2] + self.video_joint_dict["right_hip"][frame_num][2])/2)
+            else:
+                if frame_num == 0:
+                    self.hip_averages.append(0)
+                else:
+                    self.hip_averages.append(self.hip_averages[-1])
+
+            if shoulder_check:
+                shoulder_avg = ((self.video_joint_dict["left_shoulder"][frame_num][1] + self.video_joint_dict["right_shoulder"][frame_num][1])/2,(self.video_joint_dict["left_shoulder"][frame_num][2] + self.video_joint_dict["right_shoulder"][frame_num][2])/2)
+            else:
+                if frame_num == 0:
+                    self.shoulder_averages.append(0)
+                else:
+                    self.shoulder_averages.append(self.shoulder_averages[-1])
+
+            #CAN ADD KNEE AVGS IN FUTURE VERSIONS
+            #IF THE VALS ARENT -1 ADD EM
+            #IF -1 APPEND THE PREVIOUS VALUE?
+            
+            self.hip_averages.append(hip_avg)
+            self.shoulder_averages.append(shoulder_avg)
+
+    def check_for_joints(self, frame_num):
+        ankle_check, hip_check, shoulder_check = True, True, True
+        if self.video_joint_dict["left_heel"][frame_num][1] == -1 or self.video_joint_dict["left_heel"][frame_num][2] == -1:
+            ankle_check = False
+        if self.video_joint_dict["right_heel"][frame_num][1] == -1 or self.video_joint_dict["left_heel"][frame_num][2] == -1:
+            ankle_check = False
+        if self.video_joint_dict["left_foot_index"][frame_num][1] == -1 or self.video_joint_dict["left_foot_index"][frame_num][2] == -1:
+            ankle_check = False
+        if self.video_joint_dict["right_foot_index"][frame_num][1] == -1 or self.video_joint_dict["right_foot_index"][frame_num][2] == -1:
+            ankle_check = False
+        if self.video_joint_dict["left_hip"][frame_num][1] == -1 or self.video_joint_dict["left_hip"][frame_num][2] == -1 or self.video_joint_dict["right_hip"][frame_num][1] == -1 or self.video_joint_dict["right_hip"][frame_num][2] == -1:
+            hip_check = False
+        if self.video_joint_dict["left_shoulder"][frame_num][1] == -1 or self.video_joint_dict["left_shoulder"][frame_num][2] == -1 or self.video_joint_dict["right_shoulder"][frame_num][1] == -1 or self.video_joint_dict["right_shoulder"][frame_num][2] == -1:
+            shoulder_check = False
+        return ankle_check, hip_check, shoulder_check
+                
     def calculate_vertical_jump(self):
-        if self.jump_style == 4:
-            self.get_two_foot_vals()
+        if self.jump_style == 0:
+            self.get_reference_jump_vals()
         else:
             print("JUMPING STYLE NOT YET IMPLEMENTED")
         pixel_vertical = int(((self.jsl-self.hsl) + (self.jsr-self.hsr))/2)
         inch_vertical = pixel_vertical / self.pixels_per_inch
-        print(f"Vertical in Pixels: {pixel_vertical} | Vertical in Inches: {inch_vertical}")
+        self.log.info(f"calculate_vertical_jump(self) | Vertical in Pixels: {pixel_vertical} | Vertical in Inches: {inch_vertical}")
         self.inch_vert = inch_vertical
         return inch_vertical
 
-    def get_stage_0_vals(self):
+    def get_reference_values(self):
+        """
+        Retrieves H(ead) A(nkle) R(ight), HAL, HSL, and HSR, all of which are the base heights calculated from the shoulder to the original ankle level
+        """
         frame_count = 0
-        cap = cv.VideoCapture(f"{self.source_name}")
+        #cap = cv.VideoCapture(f"{self.source_name}")
         left_shoulder_list = []
         right_shoulder_list = []
         left_ankle_list = []
         right_ankle_list = []
+        
+        #FOR VIDEO DICT
+        for frame_num in range(0, self.stage_split):
+            #TO ACCOUNT FOR MISSING VALUES, EXTRACT APPENDED VALUES AND CHECK FOR -1
+            left_shoulder_list.append(self.video_joint_dict["left_shoulder"][frame_num][2])
+            right_shoulder_list.append(self.video_joint_dict["right_shoulder"][frame_num][2])
+            left_ankle_list.append((self.video_joint_dict["left_heel"][frame_num][2] + self.video_joint_dict["left_foot_index"][frame_num][2]) / 2)
+            right_ankle_list.append((self.video_joint_dict["right_heel"][frame_num][2] + self.video_joint_dict["right_foot_index"][frame_num][2]) / 2)
+
+        #FOR VIDEO CAP
+        """
         while True:
             ret, frame = cap.read()
             if frame is None or frame_count > self.stage_split:
@@ -282,40 +473,32 @@ class CalibrationHandler():
             left_ankle_list.append((values[2][2] + values[4][2]) / 2)
             right_ankle_list.append((values[3][2] + values[5][2]) / 2)
             frame_count += 1
-
+        """
+        #AVG AROUND THE INITIAL FRAME
         self.hal = sum(left_ankle_list) / len(left_ankle_list)
         self.har = sum(right_ankle_list) / len(right_ankle_list)
         self.hsl = self.hal - (sum(left_shoulder_list) / len(left_shoulder_list))
         self.hsr = self.har - (sum(right_shoulder_list) / len(right_shoulder_list))
 
-    def get_two_foot_vals(self):
+    def get_reference_jump_vals(self):
+        #THIS ONE
         self.shoulder_levels = []
-        frame_count = 0
-        cap = cv.VideoCapture(f"{self.source_name}")
         left_shoulder_list = []
         right_shoulder_list = []
         left_ankle_list = []
         right_ankle_list = []
-        while True:
-            ret, frame = cap.read()
-            if frame is None:
-                break
-            #if frame_count < self.stage_split:
-                #frame_count += 1
-                #continue
-            pose_frame = np.copy(frame)
-            self.pose_handler.findPose(pose_frame, draw = False)
-            values = self.pose_handler.findPosition(pose_frame, ["left_shoulder", "right_shoulder", "left_heel", "left_foot_index", "right_heel", "right_foot_index"], draw=False)
-            left_shoulder_list.append(values[0][2])
-            right_shoulder_list.append(values[1][2])
-            left_ankle_list.append((values[2][2] + values[4][2]) / 2)
-            right_ankle_list.append((values[3][2] + values[5][2]) / 2)
-            frame_count += 1
+
+        for frame_num in range(0, self.frame_count):
+            #TO ACCOUNT FOR MISSING VALUES, EXTRACT APPENDED VALUES AND CHECK FOR -1
+            left_shoulder_list.append(self.video_joint_dict["left_shoulder"][frame_num][2])
+            right_shoulder_list.append(self.video_joint_dict["right_shoulder"][frame_num][2])
+            left_ankle_list.append((self.video_joint_dict["left_heel"][frame_num][2] + self.video_joint_dict["left_foot_index"][frame_num][2]) / 2)
+            right_ankle_list.append((self.video_joint_dict["right_heel"][frame_num][2] + self.video_joint_dict["right_foot_index"][frame_num][2]) / 2)            
 
         #Finding the max shoulder values, and having ankle values reflect that
         #Can put an assert() clause here to ensure the same height
         max_shoulder_height = 2000
-        for i in range(0, len(left_shoulder_list)):
+        for i in range(0, self.frame_count):
             left_shoulder_height = left_shoulder_list[i]
             right_shoulder_height = right_shoulder_list[i]
             avg_height = (left_shoulder_height + right_shoulder_height) / 2
@@ -333,19 +516,15 @@ class CalibrationHandler():
         new_head_point = self.head_point + offset
         height_pixels = int((self.hal + self.har) / 2) - new_head_point
         self.pixels_per_inch = height_pixels / self.height_measured
-        print(f"Pixels Per Inch: {self.pixels_per_inch}")
+        self.log.info(f"calibrate_head_height(self, offset) | Pixels Per Inch: {self.pixels_per_inch}")
         self.head_point = new_head_point
 
-    def draw_demo_frame(self, frame):
+    def draw_demo_frame(self, frame, frame_num):
         frame_cpy = np.copy(frame)
         vert = 12
-        #NEED:
-        # - Text showing the current jump height
-        # - Base lines for the ankles and the shoulders (HAL/HAR/HA)
-        # - Line for the current shoulders
-        # - Vertical Line Connecting the two shoulder lines
-        self.pose_handler.findPose(frame_cpy, draw = False)
-        values = self.pose_handler.findPosition(frame_cpy, ["left_shoulder", "right_shoulder"], draw=False)
+        #TO ACCOUNT FOR MISSING VALUES, EXTRACT APPENDED VALUES AND CHECK FOR -1
+        values = (self.video_joint_dict["left_shoulder"][frame_num], self.video_joint_dict["right_shoulder"][frame_num])
+
 
         lsy = values[0][2]
         lsx = values[0][1]
@@ -367,6 +546,7 @@ class CalibrationHandler():
         #Going to take the data frame from opencv and converts it into numpy array
         #Size: (1080,1920,3)
         #3rd dimension is the colour in format B[0] G[1] R[2]
+        self.log.info(f"Original Frame Shape: {frame.shape}")
         new_frame = np.flip(frame, 2)
         return new_frame
 
@@ -398,5 +578,6 @@ class CalibrationHandler():
 
 if __name__ == "__main__":
     print("Handlers for Measurement")
-    ch = CalibrationHandler()
-    ch.define_stages()
+    ch = CalibrationHandler(source_name="vid_src\\ben_2.mp4")
+    ch.generate_video_points()
+    #ch.define_stages()

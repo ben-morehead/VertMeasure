@@ -174,27 +174,19 @@ class Window(QWidget):
 
             # Jump Style: Widget declaration -------------------------------------------------
             style_entry = QHBoxLayout()
-            style_label = QLabel("Jump Approach:")
-            self.style_left = QRadioButton("Left")
-            self.style_right = QRadioButton("Right")
-            self.style_left_right = QRadioButton("Left-Right")
-            self.style_right_left = QRadioButton("Right-Left")
-            self.style_two_foot = QRadioButton("Stationary Two Foot")
-            self.style_two_foot.setChecked(1)
+            style_label = QLabel("Reference Point:")
+            self.style_ground = QRadioButton("Ground")
+            self.style_rim = QRadioButton("Rim")
+            
+            self.style_ground.setChecked(1)
             # Widget Specifications
-            self.style_left.setMinimumWidth(self.windowWidth * 0.1)
-            self.style_right.setMinimumWidth(self.windowWidth * 0.1)
-            self.style_left_right.setMinimumWidth(self.windowWidth * 0.1)
-            self.style_right_left.setMinimumWidth(self.windowWidth * 0.1)
-            self.style_two_foot.setMinimumWidth(self.windowWidth * 0.1)
+            self.style_ground.setMinimumWidth(self.windowWidth * 0.1)
+            self.style_rim.setMinimumWidth(self.windowWidth * 0.1)
             # Layout
             style_entry.addWidget(style_label)
             style_entry.addStretch(1)
-            style_entry.addWidget(self.style_left)
-            style_entry.addWidget(self.style_right)
-            style_entry.addWidget(self.style_left_right)
-            style_entry.addWidget(self.style_right_left)
-            style_entry.addWidget(self.style_two_foot)
+            style_entry.addWidget(self.style_ground)
+            style_entry.addWidget(self.style_rim)
             style_entry.addStretch(5)
             
 
@@ -310,7 +302,7 @@ class Window(QWidget):
         upload_name = self.upload_line.text()
         jumper_name = self.name_line.text()
         jumper_height = self.height_line.text()
-        jump_style = -1 + (1 * self.style_left.isChecked()) + (2 * self.style_right.isChecked()) + (3 * self.style_left_right.isChecked()) + (4 * self.style_right_left.isChecked()) + (5 * self.style_two_foot.isChecked())
+        jump_style = -1 + (1 * self.style_ground.isChecked()) + (2 * self.style_rim.isChecked())
 
         if upload_name == "" or jumper_name == "" or jumper_height=="":
             self.log.info("TEXT FIELDS NOT ENTERED")
@@ -325,8 +317,12 @@ class Window(QWidget):
             
             #Calibration Handler Setup
             self.ch = CalibrationHandler(source_name=upload_name, jumper_name=jumper_name, jumper_height=jumper_height, jump_style=jump_style, log=self.log)
+            self.ch.generate_video_points()
+            self.ch.define_joint_averages()
+            
             self.ch.define_stages()
-            self.ch.get_stage_0_vals()
+            self.ch.get_reference_values()
+            
             self.ch.estimate_head_height()
 
             self.cal_scale = self.calibration_page_generator()
