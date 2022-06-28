@@ -5,7 +5,7 @@ import time
 import logging
 from PyQt5.QtWidgets import (QApplication, QComboBox, QFileDialog, QLineEdit, QPushButton,
                              QStackedLayout, QRadioButton, QVBoxLayout, QHBoxLayout, QWidget, QTextEdit,
-                             QLabel)
+                             QLabel, QButtonGroup)
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap, QMouseEvent
 import numpy as np
@@ -27,7 +27,12 @@ class Window(QWidget):
         #DEV STUFF
         self.toggle = True
         self.shoulder_offset = 0
+        self.rim_offset = 0
+        self.ground_offset = 0
+        self.frame_offset = 0
+
         self.mouse_state = 0
+
         self.border_offset = 12
         self.measured_jump_height = -1
         self.cal_tl, self.cat_br = (0, 11), (1897, 1068)
@@ -131,7 +136,10 @@ class Window(QWidget):
             config_page = QWidget()
             config_layout = QVBoxLayout()
             button_layout = QHBoxLayout()
-            
+        
+
+            style_group = QButtonGroup(config_page)
+            vid_group = QButtonGroup(config_page)
             ###Entry Definitions
 
             # Video Source: Widget declaration --------------------------------------------
@@ -177,7 +185,9 @@ class Window(QWidget):
             style_label = QLabel("Reference Point:")
             self.style_ground = QRadioButton("Ground")
             self.style_rim = QRadioButton("Rim")
-            self.style_ground.setChecked(1)
+            style_group.addButton(self.style_ground)
+            style_group.addButton(self.style_rim)
+            self.style_rim.setChecked(1)
             # Widget Specifications
             self.style_ground.setMinimumWidth(self.windowWidth * 0.1)
             self.style_rim.setMinimumWidth(self.windowWidth * 0.1)
@@ -193,8 +203,10 @@ class Window(QWidget):
             vid_label = QLabel("Video Format:")
             self.vid_vert = QRadioButton("Vertical")
             self.vid_landscape = QRadioButton("Landscape")
+            vid_group.addButton(self.vid_vert)
+            vid_group.addButton(self.vid_landscape)
             
-            self.vid_landscape.setChecked(1)
+            self.vid_vert.setChecked(1)
             # Widget Specifications
             self.vid_vert.setMinimumWidth(self.windowWidth * 0.1)
             self.vid_landscape.setMinimumWidth(self.windowWidth * 0.1)
@@ -204,9 +216,6 @@ class Window(QWidget):
             vid_entry.addWidget(self.vid_vert)
             vid_entry.addWidget(self.vid_landscape)
             vid_entry.addStretch(5)
-            
-
-
 
             #Button Definitions
             self.config_set_msg = QLabel("")
@@ -240,7 +249,7 @@ class Window(QWidget):
         self.calibration_label = QLabel(self)
             #self.calibration_label = QLabel(str(self.shoulder_offset))
         self.calibration_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.confirm_shoulder_offset_btn = QPushButton("Confirm", clicked=self.confirm_shoulder_offset)
+        self.confirm_offset_btn = QPushButton("Confirm", clicked=self.confirm_offset)
 
         if ref_style == 1:
             rim_button_layout = QVBoxLayout()
@@ -250,8 +259,8 @@ class Window(QWidget):
             self.sub_rim_offset_btn = QPushButton("Decrease Rim", clicked=self.decrease_rim_offset)
             self.add_ground_offset_btn = QPushButton("Increase Ground", clicked=self.increase_ground_offset)
             self.sub_ground_offset_btn = QPushButton("Decrease Ground", clicked=self.decrease_ground_offset)
-            self.frame_next_btn = QPushButton("Next Frame", clicked=self.increase_ground_offset)
-            self.frame_prev_btn = QPushButton("Previous Frame", clicked=self.decrease_ground_offset)
+            self.frame_next_btn = QPushButton("Next Frame", clicked=self.rim_frame_forward)
+            self.frame_prev_btn = QPushButton("Previous Frame", clicked=self.rim_frame_back)
             rim_button_layout.addWidget(self.add_rim_offset_btn)
             rim_button_layout.addWidget(self.sub_rim_offset_btn)
             ground_button_layout.addWidget(self.add_ground_offset_btn)
@@ -269,7 +278,7 @@ class Window(QWidget):
             button_layout.addWidget(self.sub_shoulder_offset_btn)
             init_frame = self.ch.get_init_head_frame()
         
-        button_layout.addWidget(self.confirm_shoulder_offset_btn)
+        button_layout.addWidget(self.confirm_offset_btn)
         calibration_layout.addWidget(self.calibration_label)
         calibration_layout.addLayout(button_layout)
         calibration_page.setLayout(calibration_layout)
@@ -360,15 +369,16 @@ class Window(QWidget):
             self.log.info(f"Jump Style Index: {ref_style}")
             self.log.info(f"Video Format: {vid_format}")
             
-            #Calibration Handler Setup
+            #----------- Calibration Handler Setup ------------------- IMPORTANT#
             self.ch = CalibrationHandler(source_name=upload_name, jumper_name=jumper_name, jumper_height=jumper_height, jump_style=ref_style, vid_format=vid_format, log=self.log)
             self.ch.generate_video_points()
             self.ch.define_joint_averages()
-            
             self.ch.define_stages()
             self.ch.get_reference_values()
-            
-            self.ch.estimate_head_height()
+            if ref_style == 0:
+                self.ch.estimate_head_height()
+            else:
+                self.ch.estimate_rim_height()
 
             self.cal_scale = self.calibration_page_generator(ref_style)
             self.export_p = self.export_page_generator()
@@ -400,43 +410,57 @@ class Window(QWidget):
         self.update_calibration_img()
 
     def increase_rim_offset(self):
-        self.shoulder_offset -= 1
-        self.update_calibration_img()
+        self.rim_offset -= 3
+        self.update_calibration_img(ref_style=1)
 
     def decrease_rim_offset(self):
-        self.shoulder_offset += 1
-        self.update_calibration_img()
+        self.rim_offset += 3
+        self.update_calibration_img(ref_style=1)
 
     def increase_ground_offset(self):
-        self.shoulder_offset -= 1
-        self.update_calibration_img()
+        self.ground_offset -= 3
+        self.update_calibration_img(ref_style=1)
 
     def decrease_ground_offset(self):
-        self.shoulder_offset += 1
-        self.update_calibration_img()
+        self.ground_offset += 3
+        self.update_calibration_img(ref_style=1)
 
     def rim_frame_forward(self):
-        self.shoulder_offset += 1
-        self.update_calibration_img()
+        self.frame_offset = 1
+        self.update_calibration_img(ref_style=1)
 
     def rim_frame_back(self):
-        self.shoulder_offset += 1
-        self.update_calibration_img()
+        self.frame_offset = -1
+        self.update_calibration_img(ref_style=1)
 
 
-    def confirm_shoulder_offset(self):
-        self.ch.calibrate_head_height(self.shoulder_offset)
+    def confirm_offset(self):
+        self.ch.calibrate_measured_height(self.shoulder_offset, self.rim_offset, self.ground_offset)
         self.measured_jump_height = self.ch.calculate_vertical_jump()
         self.export_label.setText(f"Vertical Jump: {self.measured_jump_height:.2f} inches")
         self.next_page()
     
-    def update_calibration_img(self):
-        init_frame = self.ch.get_adjusted_head_frame(self.shoulder_offset)
-        frame_img = Image.fromarray(init_frame)
-        self.__calibration_qImg = ImageQt(frame_img)
-        self.kin_pixmap = QPixmap.fromImage(self.__calibration_qImg)
-        self.calibration_label.setPixmap(self.kin_pixmap)
-        self.calibration_label.update()
+    def update_calibration_img(self, ref_style=0):
+        if ref_style:
+            #Get frame of frame offset
+            #Draw on that shit
+            #Do MATH from there
+            if self.frame_offset != 0:
+                self.ch.get_incremented_launch_frame(self.frame_offset)
+                self.frame_offset = 0
+            init_frame = self.ch.get_adjusted_launch_frame(self.ground_offset, self.rim_offset)
+            frame_img = Image.fromarray(init_frame)
+            self.__calibration_qImg = ImageQt(frame_img)
+            self.kin_pixmap = QPixmap.fromImage(self.__calibration_qImg)
+            self.calibration_label.setPixmap(self.kin_pixmap)
+            self.calibration_label.update()
+        else:
+            init_frame = self.ch.get_adjusted_head_frame(self.shoulder_offset)
+            frame_img = Image.fromarray(init_frame)
+            self.__calibration_qImg = ImageQt(frame_img)
+            self.kin_pixmap = QPixmap.fromImage(self.__calibration_qImg)
+            self.calibration_label.setPixmap(self.kin_pixmap)
+            self.calibration_label.update()
 
     '''----- Demo Page Helpers ----- '''
     
@@ -458,86 +482,3 @@ class Window(QWidget):
         self.demo_timer.stop()
         self.demo_time = None
         self.reset_page()
-
-    '''----- DEPRECATED BUT USEFUL ----- '''
-
-    def console_maker(self):
-        logOutput = QTextEdit()
-        logOutput.setReadOnly(True)
-        logOutput.setLineWrapMode(QTextEdit.NoWrap)
-
-        font = logOutput.font()
-        font.setFamily("Courier")
-        font.setPointSize(10)
-        return logOutput
-
-    def ground_maker(self):
-        ground_widget = QWidget()
-        self.ground_line = QLineEdit()
-        self.ground_console = self.console_maker()
-        self.upload_btn = QPushButton("Upload Order", clicked=self.getfile)
-        self.clear_btn = QPushButton("&CLEAR", clicked=self.ground_console.clear)
-        self.ground_line.returnPressed.connect(self.on_line_edit_enter)
-        
-        
-        upper_layout = QVBoxLayout()
-        layout_top = QVBoxLayout()
-        layout_bot = QHBoxLayout()
-        
-        layout_top.addWidget(self.ground_console)
-        layout_bot.addWidget(self.ground_line, 7)
-        layout_bot.addWidget(self.upload_btn, 2)
-        layout_bot.addWidget(self.clear_btn, 1)
-        
-
-        upper_layout.addLayout(layout_top)
-        upper_layout.addLayout(layout_bot)
-
-        ground_widget.setLayout(upper_layout)
-        return ground_widget
-
-    def on_line_edit_enter(self):
-        line_value = self.ground_line.text()
-        self.ground_line.clear()
-        ret = self.sp.import_sheet(line_value)
-        if ret:
-            self.ground_console.append("Succesfully Imported Spreadsheet")
-        data_str = self.sp.display_data()
-        self.ground_console.append(data_str)
-        self.sp.parse_data()
-        valid_check = self.sp.check_valid()
-        self.ground_console.append(valid_check[1])
-        if valid_check[0]:
-            encoding = self.sp.encode_to_packet()
-            self.ground_console.append(encoding)
-    
-    def hospital_maker(self):
-        
-        hospital_widget = QWidget()
-        self.hospital_start_button = QPushButton("START", clicked=self.start_hospital_loop)
-        self.hospital_stop_button = QPushButton("STOP", clicked=self.end_hospital_loop)
-        self.hospital_console = self.console_maker()
-        self.hospital_stop_button.setEnabled(False)
-        
-        upper_layout = QVBoxLayout()
-        layout_top = QVBoxLayout()
-        layout_bot = QHBoxLayout()
-        
-        layout_top.addWidget(self.hospital_console)
-        layout_bot.addWidget(self.hospital_start_button, 5)
-        layout_bot.addWidget(self.hospital_stop_button, 5)
-
-        upper_layout.addLayout(layout_top)
-        upper_layout.addLayout(layout_bot)
-
-        hospital_widget.setLayout(upper_layout)
-        return hospital_widget
-
-    def end_hospital_loop(self):
-        self.hospital_timer.stop()
-        del self.hospital_timer
-        self.hospital_console.append("Hospital Loop Ended")
-
-        self.hospital_start_button.setEnabled(True)
-        self.hospital_stop_button.setEnabled(False)
-
