@@ -33,7 +33,7 @@ As a functional addition, I also attempted to measure the different components o
 >
 > ![Dunk Plot B](doc_src/demo_img_2.png)
 
-That's a brief rundown on some of the coolest stuff the program can do. Below I'll be going over all of the introcacies of the program, and how it can best be used within a training program.
+That's a brief rundown on some of the coolest stuff the program can do. Below I'll be going over all of the intricacies of the program, and how it can best be used within a training program.
 
 ## Program Rundown Contents
 [Project Setup](https://github.com/ben-morehead/BasketballPlayTracking/blob/main/README.md#project-setup)
