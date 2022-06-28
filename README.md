@@ -17,7 +17,7 @@ And another one
 >
 > ![Dunk B](doc_src/demo_gif_2.gif)
 
-Using those videos as examples, the project produced jump values of ___ and ___ respectively, and also produced these demonstration videos to show exactly how the measurement was obtained. This is a built in piece of the software.
+Using those videos as examples, the project produced jump values of 33.97 and 35.67 respectively, it also produced these demonstration videos to show exactly how the measurement was obtained. This is a built in piece of the software.
 
 > Tracking Vertical Jump via Shoulder Levels I
 >
@@ -26,6 +26,12 @@ Using those videos as examples, the project produced jump values of ___ and ___ 
 > ![Demo Dunk B](doc_src/demo_gif_4.gif)
 
 As a functional addition, I also attempted to measure the different components of the jump. Specifically I wanted to look at descent speed (so the ability to drop the shoulders and hips before launching), the ground contact time (to see how quickly I'm accelerating upwards from my descent), and the descent level (to see how low I get on each jump). In a running video like this, these statistics tend to be less useful, however in stationary tests they can be useful metrics to track how different approaches to explosivity training are contributing to the someone's vertical jump. The measured values are loosely marked on the shoulder level plot (displayed below) that the program generates for the user.
+
+> Shoulder Path Plots
+>
+> ![Dunk Plot A](doc_src/demo_img_1.png)
+>
+> ![Dunk Plot B](doc_src/demo_img_2.png)
 
 The program and it's introcasies will be further described below. This has 
 
