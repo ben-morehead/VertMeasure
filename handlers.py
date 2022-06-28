@@ -10,11 +10,6 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import csv
 
-"""
-THE LIST:
-
-"""
-
 class PoseHandler():
     def __init__(self,
                  static_image_mode=False,
@@ -101,13 +96,9 @@ class CalibrationHandler():
         '''
         Initializing the handler object
         '''
-
-        
         self.source_name = source_name
         self.log = log
         self.base_frame_tolerance = 1
-        #self.source_name = "No_Strength_Shortening_1.mp4"
-        #self.source_name = "ben_2.mov"
         self.jumper_name= jumper_name
         self.jump_style = jump_style
         if vid_format == 1:
