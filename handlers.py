@@ -279,19 +279,6 @@ class CalibrationHandler():
 
     def get_rim_launch_frame(self):
         return self.stage_split
-        # for frame_number in range(0,self.frame_count):
-        #     # Should be form (x,y)
-        #     if frame_number == 0:
-        #         current_shoulder_height = self.shoulder_averages[frame_number][1]
-        #         prev_shoulder_height = current_shoulder_height
-        #     else:
-        #         prev_shoulder_height = current_shoulder_height
-        #         current_shoulder_height = self.shoulder_averages[frame_number][1]
-            
-        #     frame_diff = abs(current_shoulder_height - prev_shoulder_height)
-            
-        #     if frame_diff > self.launch_tolerance:
-        #         return frame_number - 1
 
 
     def get_raw_base_frame(self):
@@ -477,8 +464,6 @@ class CalibrationHandler():
                     self.shoulder_averages.append((0,0))
                 else:
                     self.shoulder_averages.append(self.shoulder_averages[-1])
-
-            # Notes: CAN ADD KNEE AVGS IN FUTURE VERSIONS
             
     def find_max_shoulder_ankle(self):
         #RETURNS Distance in Pixels, Frame Number
@@ -494,7 +479,6 @@ class CalibrationHandler():
                 self.max_shoulder_ankle_distance = shoulder_ankle_distance
                 final_frame = frame_num
         print(f"Max Height Difference: {self.max_shoulder_ankle_distance} at frame {final_frame}")
-        #return max_distance, final_frame
     
     def find_landing_frame(self, upwards_tolerance=2):
         #find shoulder check first
@@ -539,8 +523,6 @@ class CalibrationHandler():
         return ankle_check, hip_check, shoulder_check
                 
     def calculate_vertical_jump(self):
-
-        ### NEED TO ADJUST BACK TO WORK FOR BASIC JUMP TOO (should be simple)
 
         self.find_max_shoulder_ankle()
         self.get_reference_jump_vals()
@@ -716,13 +698,6 @@ class CalibrationHandler():
         frame_cpy = cv.line(frame_cpy, (0, by), (1919, by), color=(255, 0, 0), thickness=2)
         return vert, frame_cpy
 
-        #NOTE FOR CONTINUATION
-        #NEED TO EITHER
-        #A. Clean up the video
-        #B. Have a higher acceptable percentage
-        #C. Remove any noise at the beggining, after adjusting where the launch frame is
-
-
     def convert_to_formatted_frame(self, frame):
         #Going to take the data frame from opencv and converts it into numpy array
         #Size: (1080,1920,3)
@@ -814,7 +789,3 @@ if __name__ == "__main__":
     print("Handlers for Measurement")
     ch = CalibrationHandler(source_name="vid_src\\DUNK_1.MOV")
     ch.play_selected_video(True)
-    #ch.generate_video_points()
-    #ch.print_video_points()
-
-    #ch.define_stages()
